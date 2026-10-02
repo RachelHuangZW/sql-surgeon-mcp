@@ -3,7 +3,7 @@ from mcp.server.fastmcp import FastMCP
 from . import tools
 
 mcp = FastMCP(
-    "postgres-mcp",
+    "sql-surgeon-mcp",
     instructions="When the user asks to analyze, diagnose, or optimize a SQL query, always call the analyze_query tool. Do not reason about query performance from memory — analyze_query runs EXPLAIN ANALYZE against the real database and returns actual execution data.",
 )
 

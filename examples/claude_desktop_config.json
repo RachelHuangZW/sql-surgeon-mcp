@@ -1,14 +1,14 @@
 {
   "mcpServers": {
-    "postgres-mcp": {
+    "sql-surgeon-mcp": {
       "command": "uv",
       "args": [
         "run",
         "--directory",
-        "/path/to/postgres-mcp",
+        "/path/to/sql-surgeon-mcp",
         "python",
         "-m",
-        "postgres_mcp.server"
+        "sql_surgeon_mcp.server"
       ],
       "env": {
         "DATABASE_URL": "postgresql://user:password@localhost:5432/dbname"
