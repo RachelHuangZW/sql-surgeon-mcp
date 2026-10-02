@@ -2,8 +2,9 @@ import json
 
 import psycopg2.extras
 
+from sql_surgeon.agent.graph import app as agent_graph
+
 from .db import get_connection
-from .agent.graph import app as agent_graph
 
 def execute_query(sql: str) -> str:
     conn = get_connection()
@@ -101,48 +102,16 @@ def list_tables(schema: str = "public") -> str:
         conn.close()
 
 
-def _fetch_ddl_for_tables(table_names: list) -> str:
-    """Get DDL for tables, when not provided by user."""
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            parts = []
-            for table in table_names:
-                cur.execute(
-                    """
-                    SELECT column_name, data_type, is_nullable, column_default
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public' AND table_name = %s
-                    ORDER BY ordinal_position
-                    """,
-                    (table,),
-                )
-                cols = cur.fetchall()
-                #print(cols)
-                if cols:
-                    col_defs = ", ".join(f"{c[0]} {c[1]} {'NOT NULL' if c[2] == 'NO' else 'NULL'}"+ (f" DEFAULT {c[3]}" if c[3] else "")for c in cols)       
-                    parts.append(f"CREATE TABLE {table} ({col_defs});")
-            return "\n".join(parts)
-    finally:
-        conn.close()
-
-
-def _extract_table_names(sql: str) -> list:
-    import re
-    pattern = r'\b(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)'
-    return list(set(re.findall(pattern, sql, re.IGNORECASE)))
-
-
 def analyze_query(sql: str, ddl: str = "", table_name: str = "") -> str:
     """Run the SQL-Surgeon pipeline and return optimization advice."""
-    if not ddl:
-        tables = _extract_table_names(sql)
-        ddl = _fetch_ddl_for_tables(tables)
-
+    # Empty ddl is fine: the pipeline's run_explain node fetches column definitions and
+    # existing indexes for every table in the query (comma joins included).
     initial_state = {
         "original_sql": sql,
         "ddl": ddl,
-        "table_name": table_name,
+        # Kept for MCP API compatibility: passing table_name has always meant "also run the sandbox benchmark".
+        # The pipeline now finds the tables to copy from the SQL itself.
+        "run_benchmark": bool(table_name),
         "issues": [],
         "advice": [],
         "retry_count": 0,
@@ -153,6 +122,8 @@ def analyze_query(sql: str, ddl: str = "", table_name: str = "") -> str:
     return json.dumps({
         "issues": final_state.get("issues"),
         "advice": final_state.get("advice"),
+        "warnings": final_state.get("rewrite_warnings"),
+        "index_recommendations": final_state.get("filtered_indexes"),
         "optimized_sql": final_state.get("optimized_sql"),
         "benchmark_result": final_state.get("benchmark_result"),
         "error": final_state.get("error"),

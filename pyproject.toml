@@ -8,10 +8,14 @@ dependencies = [
     "mcp[cli]>=1.0.0",
     "psycopg2-binary>=2.9.0",
     "python-dotenv>=1.0.0",
-    "langchain-google-genai>=2.0.0",
-    "langchain-core>=0.3.0",
-    "langgraph>=0.2.0",
+    # The analysis engine (LangGraph agent + hardened DB client). Pulls in langchain/langgraph.
+    "sql-surgeon",
 ]
+
+# Pinned to a tag so engine changes reach this server only when the tag is bumped.
+# To sync: tag a new release in SQL-Surgeon, update `tag` here, then run `uv lock --upgrade-package sql-surgeon`.
+[tool.uv.sources]
+sql-surgeon = { git = "https://github.com/RachelHuangZW/SQL-Surgeon.git", tag = "v0.1.0", subdirectory = "backend" }
 
 [project.scripts]
 sql-surgeon-mcp = "sql_surgeon_mcp.server:main"
