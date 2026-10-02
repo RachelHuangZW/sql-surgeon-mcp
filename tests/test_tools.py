@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from postgres_mcp.tools import execute_query, explain_query, get_table_schema
+from sql_surgeon_mcp.tools import execute_query, explain_query, get_table_schema
 
 
 def _make_cursor(rows=None, description=None, rowcount=0):
@@ -24,7 +24,7 @@ def _make_conn(cursor):
 
 # ── execute_query ────────────────────────────────────────────────────────────
 
-@patch("postgres_mcp.tools.get_connection")
+@patch("sql_surgeon_mcp.tools.get_connection")
 def test_execute_query_select(mock_conn):
     row = {"id": 1, "name": "alice"}
     cur = _make_cursor(rows=[row], description=["id", "name"])
@@ -35,7 +35,7 @@ def test_execute_query_select(mock_conn):
     assert data == [{"id": 1, "name": "alice"}]
 
 
-@patch("postgres_mcp.tools.get_connection")
+@patch("sql_surgeon_mcp.tools.get_connection")
 def test_execute_query_dml(mock_conn):
     cur = _make_cursor(description=None, rowcount=3)
     mock_conn.return_value = _make_conn(cur)
@@ -44,7 +44,7 @@ def test_execute_query_dml(mock_conn):
     assert "3" in result
 
 
-@patch("postgres_mcp.tools.get_connection")
+@patch("sql_surgeon_mcp.tools.get_connection")
 def test_execute_query_error_rolls_back(mock_conn):
     conn = MagicMock()
     cur = MagicMock()
@@ -62,7 +62,7 @@ def test_execute_query_error_rolls_back(mock_conn):
 
 # ── explain_query ────────────────────────────────────────────────────────────
 
-@patch("postgres_mcp.tools.get_connection")
+@patch("sql_surgeon_mcp.tools.get_connection")
 def test_explain_query_no_analyze(mock_conn):
     cur = _make_cursor(rows=[("Seq Scan on users",), ("  cost=0.00..1.01",)])
     mock_conn.return_value = _make_conn(cur)
@@ -75,7 +75,7 @@ def test_explain_query_no_analyze(mock_conn):
     assert "ANALYZE" not in sql_used
 
 
-@patch("postgres_mcp.tools.get_connection")
+@patch("sql_surgeon_mcp.tools.get_connection")
 def test_explain_query_with_analyze(mock_conn):
     cur = _make_cursor(rows=[("Seq Scan on users  (actual time=0.1..0.2)",)])
     mock_conn.return_value = _make_conn(cur)
@@ -88,7 +88,7 @@ def test_explain_query_with_analyze(mock_conn):
 
 # ── get_table_schema ─────────────────────────────────────────────────────────
 
-@patch("postgres_mcp.tools.get_connection")
+@patch("sql_surgeon_mcp.tools.get_connection")
 def test_get_table_schema_not_found(mock_conn):
     cur = _make_cursor(rows=[])
     mock_conn.return_value = _make_conn(cur)
@@ -97,7 +97,7 @@ def test_get_table_schema_not_found(mock_conn):
     assert "not found" in result
 
 
-@patch("postgres_mcp.tools.get_connection")
+@patch("sql_surgeon_mcp.tools.get_connection")
 def test_get_table_schema_columns_and_indexes(mock_conn):
     columns = [
         {

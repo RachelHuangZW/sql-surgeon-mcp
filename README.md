@@ -1,4 +1,4 @@
-# postgres-mcp
+# sql-surgeon-mcp
 
 An [MCP](https://modelcontextprotocol.io) server that connects Claude Desktop to a PostgreSQL database, exposing both direct query tools and an AI-powered query optimization pipeline built on [SQL-Surgeon](https://github.com/RachelHuangZW/SQL-Surgeon).
 
@@ -63,7 +63,7 @@ db.py                            agent/graph.py
 ## Project Layout
 
 ```
-src/postgres_mcp/
+src/sql_surgeon_mcp/
     server.py           # MCP entry point, tool registrations
     tools.py            # Tool logic; calls db.py and agent/
     db.py               # Connection helper (reads DATABASE_URL)
@@ -92,8 +92,8 @@ examples/
 ### Install
 
 ```bash
-git clone https://github.com/RachelHuangZW/postgres-mcp
-cd postgres-mcp
+git clone https://github.com/RachelHuangZW/sql-surgeon-mcp
+cd sql-surgeon-mcp
 uv sync
 ```
 
@@ -113,13 +113,13 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "postgres-mcp": {
+    "sql-surgeon-mcp": {
       "command": "uv",
       "args": [
         "run",
-        "--directory", "/path/to/postgres-mcp",
-        "--env-file", "/path/to/postgres-mcp/.env",
-        "python", "-m", "postgres_mcp.server"
+        "--directory", "/path/to/sql-surgeon-mcp",
+        "--env-file", "/path/to/sql-surgeon-mcp/.env",
+        "python", "-m", "sql_surgeon_mcp.server"
       ]
     }
   }
