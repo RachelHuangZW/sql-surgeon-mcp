@@ -1577,16 +1577,26 @@ wheels = [
 ]
 
 [[package]]
-name = "sql-surgeon-mcp"
+name = "sql-surgeon"
 version = "0.1.0"
-source = { editable = "." }
+source = { git = "https://github.com/RachelHuangZW/SQL-Surgeon.git?subdirectory=backend&tag=v0.1.0#08b566b94bf61fd094934980e5e46c05bf7f4f8f" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langchain-google-genai" },
     { name = "langgraph" },
+    { name = "psycopg2-binary" },
+    { name = "python-dotenv" },
+]
+
+[[package]]
+name = "sql-surgeon-mcp"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "psycopg2-binary" },
     { name = "python-dotenv" },
+    { name = "sql-surgeon" },
 ]
 
 [package.dev-dependencies]
@@ -1596,12 +1606,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "langchain-core", specifier = ">=0.3.0" },
-    { name = "langchain-google-genai", specifier = ">=2.0.0" },
-    { name = "langgraph", specifier = ">=0.2.0" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "sql-surgeon", git = "https://github.com/RachelHuangZW/SQL-Surgeon.git?subdirectory=backend&tag=v0.1.0" },
 ]
 
 [package.metadata.requires-dev]

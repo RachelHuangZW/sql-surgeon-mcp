@@ -25,19 +25,20 @@ Claude Desktop
       │
   ┌───┴──────────────────────────────────┐
   │                                      │
-db.py                            agent/graph.py
-(Layer 1: direct tools)          (Layer 2: LangGraph pipeline)
-  │                                      │
-  ├── execute_query          ┌───────────┼───────────┐
-  ├── explain_query          ▼           ▼           ▼
-  ├── list_tables       run_explain  identify_issues  generate_advice
-  ├── get_table_schema       │           │           │
-  └── get_slow_queries       └───────────┴───────────┘
-                                         │
-                                   review_advice  ←── retry loop (max 2x)
+db.py                            sql_surgeon.agent.graph
+(Layer 1: direct tools)          (Layer 2: LangGraph pipeline, from the
+  │                               sql-surgeon package — see below)
+  ├── execute_query                      │
+  ├── explain_query          preprocess_sql → rewrite_sql → run_explain
+  ├── list_tables                        │
+  ├── get_table_schema           identify_issues → generate_advice
+  └── get_slow_queries                   │              ▲
+                                   review_advice ───────┘ retry loop (max 2x)
                                          │
                             generate_benchmark_schema (optional)
 ```
+
+The pipeline is not copied into this repo. It comes from the [SQL-Surgeon](https://github.com/RachelHuangZW/SQL-Surgeon) project as the `sql-surgeon` package (`backend/` of that repo), pinned to a release tag in `pyproject.toml`. Fixes made in SQL-Surgeon reach this server by bumping that tag.
 
 ## MCP Tools
 
@@ -48,31 +49,27 @@ db.py                            agent/graph.py
 | `list_tables` | `schema` (default `"public"`) | List all tables in a schema |
 | `get_table_schema` | `table_name`, `schema` (default `"public"`) | List columns, types, nullability, defaults, and indexes |
 | `get_slow_queries` | `limit` (default `5`) | Return the slowest queries by mean execution time from `pg_stat_statements` |
-| `analyze_query` | `sql`, `ddl` (optional, auto-fetched if omitted), `table_name` (optional) | Run full SQL-Surgeon optimization pipeline; returns issues, advice, optimized SQL, and optional benchmark |
+| `analyze_query` | `sql`, `ddl` (optional, auto-fetched if omitted), `table_name` (optional; any value turns on the sandbox benchmark) | Run full SQL-Surgeon optimization pipeline; returns issues, advice, warnings (SQL anti-patterns, tables without a primary key), index recommendations with reasons, optimized SQL, and optional benchmark |
 
 ## SQL-Surgeon Pipeline
 
-`analyze_query` invokes a 5-node LangGraph graph:
+`analyze_query` invokes the SQL-Surgeon LangGraph graph (7 nodes):
 
-1. **run_explain** — executes `EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS, FORMAT JSON)` against the real database
-2. **identify_issues** — sends the execution plan + DDL to Gemini 2.5 Pro; returns a JSON array of identified bottlenecks (missing indexes, sequential scans, row count misestimation, etc.)
-3. **generate_advice** — generates specific optimization recommendations and a complete optimized SQL script (index DDL + rewritten query)
-4. **review_advice** — a second LLM call acting as a senior DBA reviewer; returns `pass` or `retry` with feedback; retries up to 2 times
-5. **generate_benchmark_schema** (optional) — clones the target table into a temporary schema, applies the suggested DDL, and re-runs EXPLAIN to compare plans
+1. **preprocess_sql** — rewrites comma-style joins (`FROM a, b WHERE a.id = b.id`) into explicit `JOIN ... ON`
+2. **rewrite_sql** — flags SQL anti-patterns (e.g. `SELECT *`) and drops redundant `DISTINCT`
+3. **run_explain** — executes `EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS, FORMAT JSON)` in a read-only, time-limited transaction; fetches column definitions and existing indexes for every table in the query; flags tables without a primary key
+4. **identify_issues** — sends the execution plan + DDL to Gemini 2.5 Pro; returns a JSON array of identified bottlenecks (missing indexes, sequential scans, row count misestimation, etc.)
+5. **generate_advice** — generates specific optimization recommendations and a complete optimized SQL script (index DDL + rewritten query)
+6. **review_advice** — a second LLM call acting as a senior DBA reviewer; returns `pass` or `retry` with feedback; a retry goes back to `generate_advice`, up to 2 times
+7. **generate_benchmark_schema** (optional) — copies the query's tables into a temporary schema, applies the suggested DDL, and re-runs EXPLAIN to compare plans
 
 ## Project Layout
 
 ```
 src/sql_surgeon_mcp/
     server.py           # MCP entry point, tool registrations
-    tools.py            # Tool logic; calls db.py and agent/
+    tools.py            # Tool logic; calls db.py and the sql_surgeon pipeline
     db.py               # Connection helper (reads DATABASE_URL)
-    db_client.py        # DBClient used by the agent pipeline
-    agent/
-        graph.py        # LangGraph graph definition
-        nodes.py        # 5 node functions
-        state.py        # AgentState TypedDict
-        prompts.py      # System prompts for each LLM node
 tests/
     test_tools.py       # Unit tests with mocked DB connections
 examples/
@@ -144,6 +141,17 @@ uv run pytest
 ```
 
 Tests use mocked database connections and do not require a live PostgreSQL instance.
+
+### Updating the SQL-Surgeon engine
+
+The pipeline (`sql_surgeon`) is a dependency, pinned to a tag of the SQL-Surgeon repo:
+
+1. In SQL-Surgeon: commit the change, then `git tag vX.Y.Z && git push origin main --tags`
+2. Here: change `tag = "..."` under `[tool.uv.sources]` in `pyproject.toml` to the new tag
+3. `uv lock --upgrade-package sql-surgeon && uv sync`, then `uv run pytest`
+
+To try an unreleased SQL-Surgeon change locally, temporarily point the source at your checkout instead of the tag:
+`sql-surgeon = { path = "../SQL-Surgeon/backend", editable = true }` — and switch back before committing.
 
 ## Tech Stack
 
