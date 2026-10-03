@@ -4,38 +4,15 @@ import psycopg2.extras
 
 from sql_surgeon.agent.graph import app as agent_graph
 
-from .db import get_connection
+from .db import get_connection, get_db_client
 
 def execute_query(sql: str) -> str:
-    conn = get_connection()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql)
-            if cur.description:
-                rows = [dict(r) for r in cur.fetchall()]
-                return json.dumps(rows, default=str, indent=2)
-            conn.commit()
-            return f"{cur.rowcount} rows affected"
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    rows = get_db_client().run_query(sql)
+    return json.dumps(rows, default=str, indent=2)
 
 
 def explain_query(sql: str, analyze: bool = False) -> str:
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            prefix = (
-                "EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)"
-                if analyze
-                else "EXPLAIN (FORMAT TEXT)"
-            )
-            cur.execute(f"{prefix} {sql}")
-            return "\n".join(row[0] for row in cur.fetchall())
-    finally:
-        conn.close()
+    return get_db_client().explain_text(sql, analyze)
 
 
 def get_table_schema(table_name: str, schema: str = "public") -> str:

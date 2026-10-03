@@ -44,8 +44,8 @@ The pipeline is not copied into this repo. It comes from the [SQL-Surgeon](https
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `execute_query` | `sql` | Run any SQL; SELECT returns JSON rows, DML returns affected row count |
-| `explain_query` | `sql`, `analyze` (bool, default `false`) | Get query execution plan; `analyze=true` runs `EXPLAIN (ANALYZE, BUFFERS)` |
+| `execute_query` | `sql` | Run one read-only query (SELECT / WITH / VALUES / TABLE) and return JSON rows. Writes, DDL and multiple statements are rejected |
+| `explain_query` | `sql`, `analyze` (bool, default `false`) | Get the execution plan of one read-only query; `analyze=true` runs `EXPLAIN (ANALYZE, BUFFERS)` in a read-only transaction |
 | `list_tables` | `schema` (default `"public"`) | List all tables in a schema |
 | `get_table_schema` | `table_name`, `schema` (default `"public"`) | List columns, types, nullability, defaults, and indexes |
 | `get_slow_queries` | `limit` (default `5`) | Return the slowest queries by mean execution time from `pg_stat_statements` |
@@ -61,7 +61,7 @@ The pipeline is not copied into this repo. It comes from the [SQL-Surgeon](https
 4. **identify_issues** — sends the execution plan + DDL to Gemini 2.5 Pro; returns a JSON array of identified bottlenecks (missing indexes, sequential scans, row count misestimation, etc.)
 5. **generate_advice** — generates specific optimization recommendations and a complete optimized SQL script (index DDL + rewritten query)
 6. **review_advice** — a second LLM call acting as a senior DBA reviewer; returns `pass` or `retry` with feedback; a retry goes back to `generate_advice`, up to 2 times
-7. **generate_benchmark_schema** (optional) — copies the query's tables into a temporary schema, applies the suggested DDL, and re-runs EXPLAIN to compare plans
+7. **generate_benchmark_schema** (optional) — copies the query's tables into a temporary schema, applies the suggested DDL (only `CREATE INDEX` / `CREATE EXTENSION` / `ANALYZE` on the copies), and re-runs EXPLAIN to compare plans. Runs in one transaction that is always rolled back
 
 ## Project Layout
 
@@ -101,6 +101,8 @@ Create `.env` in the project root:
 ```
 DATABASE_URL=postgresql://user:password@localhost:5432/dbname
 GOOGLE_API_KEY=your-google-api-key
+# Recommended: a SELECT-only role for SQL that comes from Claude (see Security below)
+SURGEON_READONLY_DATABASE_URL=postgresql://sql_surgeon_readonly:password@localhost:5432/dbname
 ```
 
 ### Register with Claude Desktop
@@ -165,6 +167,19 @@ To try an unreleased SQL-Surgeon change locally, temporarily point the source at
 
 This project was built with Claude Code as a pair-programming partner. I designed the architecture (two-layer tool exposure, separation of `db.py` vs `db_client.py`), made all technical decisions (MCP framework choice, LangGraph integration approach, security boundaries), and iterated on implementation with AI assistance. Every design decision documented in this README reflects my own thinking about MCP server design and enterprise database tool exposure.
 
-## Security Note
+## Security
 
-`execute_query` runs arbitrary SQL. Use a read-only database role in production or restrict access to trusted users only.
+SQL written by Claude never changes your data. `execute_query`, `explain_query` and `analyze_query` all go through the SQL-Surgeon DB client:
+
+1. **One statement only.** Input such as `SELECT 1; COMMIT; DELETE ...` is rejected before it reaches the database.
+2. **Queries only.** The statement must start with `SELECT`, `WITH`, `VALUES` or `TABLE`.
+3. **READ ONLY transaction, never committed.** This also blocks data-modifying CTEs and `SELECT ... FOR UPDATE`.
+4. **`statement_timeout` / `lock_timeout`.** Defaults are 5s / 2s. Set `SURGEON_STATEMENT_TIMEOUT_MS` / `SURGEON_LOCK_TIMEOUT_MS` to change them.
+5. **Least-privilege role.** If `SURGEON_READONLY_DATABASE_URL` is set, these queries run as that role instead of `DATABASE_URL`. Create the role with [`scripts/setup_security_role.sql`](https://github.com/RachelHuangZW/SQL-Surgeon/blob/main/scripts/setup_security_role.sql) from SQL-Surgeon.
+
+Two things still use `DATABASE_URL` directly:
+
+- The sandbox benchmark, because it needs to create a schema. Only allowlisted index DDL runs there, and the transaction is always rolled back.
+- The server's own fixed catalog queries (`list_tables`, `get_table_schema`, `get_slow_queries`).
+
+Setting the read-only role is still recommended. The checks above are the first line of defense; the role is the backstop.

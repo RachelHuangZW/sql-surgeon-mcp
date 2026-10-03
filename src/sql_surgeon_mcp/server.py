@@ -10,15 +10,15 @@ mcp = FastMCP(
 
 @mcp.tool()
 def execute_query(sql: str) -> str:
-    """Execute a SQL query against the connected PostgreSQL database and return results as JSON."""
+    """Run a read-only query (a single SELECT / WITH / VALUES / TABLE statement) against the connected PostgreSQL database and return the rows as JSON. Writes, DDL and multiple statements are rejected; nothing is ever committed."""
     return tools.execute_query(sql)
 
 
 @mcp.tool()
 def explain_query(sql: str, analyze: bool = False) -> str:
     """
-    Return the EXPLAIN execution plan for a SQL query.
-    Set analyze=True to run EXPLAIN ANALYZE (this actually executes the query).
+    Return the EXPLAIN execution plan for a read-only query (a single SELECT / WITH / VALUES / TABLE statement).
+    Set analyze=True to run EXPLAIN ANALYZE (this actually executes the query, in a read-only transaction).
     """
     return tools.explain_query(sql, analyze)
 
