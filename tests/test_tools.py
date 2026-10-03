@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from sql_surgeon.db.client import UnsafeSQLError
 from sql_surgeon_mcp.tools import execute_query, explain_query, get_table_schema
 
 
@@ -24,66 +25,64 @@ def _make_conn(cursor):
 
 # ── execute_query ────────────────────────────────────────────────────────────
 
-@patch("sql_surgeon_mcp.tools.get_connection")
-def test_execute_query_select(mock_conn):
-    row = {"id": 1, "name": "alice"}
-    cur = _make_cursor(rows=[row], description=["id", "name"])
-    mock_conn.return_value = _make_conn(cur)
+@patch("sql_surgeon_mcp.tools.get_db_client")
+def test_execute_query_select(mock_client):
+    mock_client.return_value.run_query.return_value = [{"id": 1, "name": "alice"}]
 
     result = execute_query("SELECT * FROM users")
-    data = json.loads(result)
-    assert data == [{"id": 1, "name": "alice"}]
+    assert json.loads(result) == [{"id": 1, "name": "alice"}]
+    mock_client.return_value.run_query.assert_called_once_with("SELECT * FROM users")
 
 
-@patch("sql_surgeon_mcp.tools.get_connection")
-def test_execute_query_dml(mock_conn):
-    cur = _make_cursor(description=None, rowcount=3)
-    mock_conn.return_value = _make_conn(cur)
+WRITES = [
+    "DELETE FROM users WHERE active = false",
+    "UPDATE users SET name = 'x'",
+    "CREATE TABLE pwned (x int)",
+    "DROP TABLE users",
+    "SELECT 1; COMMIT; DELETE FROM users",
+    "CREATE TABLE evil AS SELECT 1",
+]
 
-    result = execute_query("DELETE FROM users WHERE active = false")
-    assert "3" in result
+
+@pytest.fixture
+def no_db(monkeypatch):
+    """Real DBClient guards, but fail the test if anything tries to reach a database."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused@localhost/unused")
+    monkeypatch.setattr("sql_surgeon.db.client._get_pool", MagicMock(side_effect=AssertionError("touched the DB")))
+    monkeypatch.setattr("psycopg2.connect", MagicMock(side_effect=AssertionError("touched the DB")))
 
 
-@patch("sql_surgeon_mcp.tools.get_connection")
-def test_execute_query_error_rolls_back(mock_conn):
-    conn = MagicMock()
-    cur = MagicMock()
-    cur.__enter__ = lambda s: s
-    cur.__exit__ = MagicMock(return_value=False)
-    cur.execute.side_effect = Exception("syntax error")
-    conn.cursor.return_value = cur
-    mock_conn.return_value = conn
-
-    with pytest.raises(Exception, match="syntax error"):
-        execute_query("BAD SQL")
-
-    conn.rollback.assert_called_once()
+@pytest.mark.parametrize("sql", WRITES)
+def test_execute_query_rejects_writes(no_db, sql):
+    with pytest.raises(UnsafeSQLError):
+        execute_query(sql)
 
 
 # ── explain_query ────────────────────────────────────────────────────────────
 
-@patch("sql_surgeon_mcp.tools.get_connection")
-def test_explain_query_no_analyze(mock_conn):
-    cur = _make_cursor(rows=[("Seq Scan on users",), ("  cost=0.00..1.01",)])
-    mock_conn.return_value = _make_conn(cur)
+@patch("sql_surgeon_mcp.tools.get_db_client")
+def test_explain_query_no_analyze(mock_client):
+    mock_client.return_value.explain_text.return_value = "Seq Scan on users  (cost=0.00..1.01)"
 
     result = explain_query("SELECT * FROM users")
     assert "Seq Scan" in result
-    cur.execute.assert_called_once()
-    sql_used = cur.execute.call_args[0][0]
-    assert sql_used.startswith("EXPLAIN (FORMAT TEXT)")
-    assert "ANALYZE" not in sql_used
+    mock_client.return_value.explain_text.assert_called_once_with("SELECT * FROM users", False)
 
 
-@patch("sql_surgeon_mcp.tools.get_connection")
-def test_explain_query_with_analyze(mock_conn):
-    cur = _make_cursor(rows=[("Seq Scan on users  (actual time=0.1..0.2)",)])
-    mock_conn.return_value = _make_conn(cur)
+@patch("sql_surgeon_mcp.tools.get_db_client")
+def test_explain_query_with_analyze(mock_client):
+    mock_client.return_value.explain_text.return_value = "Seq Scan on users  (actual time=0.1..0.2)"
 
     result = explain_query("SELECT * FROM users", analyze=True)
     assert "actual time" in result
-    sql_used = cur.execute.call_args[0][0]
-    assert "ANALYZE" in sql_used
+    mock_client.return_value.explain_text.assert_called_once_with("SELECT * FROM users", True)
+
+
+@pytest.mark.parametrize("sql", WRITES)
+@pytest.mark.parametrize("analyze", [False, True])
+def test_explain_query_rejects_writes(no_db, sql, analyze):
+    with pytest.raises(UnsafeSQLError):
+        explain_query(sql, analyze=analyze)
 
 
 # ── get_table_schema ─────────────────────────────────────────────────────────
