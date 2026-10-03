@@ -1578,8 +1578,8 @@ wheels = [
 
 [[package]]
 name = "sql-surgeon"
-version = "0.1.0"
-source = { git = "https://github.com/RachelHuangZW/SQL-Surgeon.git?subdirectory=backend&tag=v0.1.1#b2fd4fc13af2f7acf42e7aa66f62e40f6caf53ab" }
+version = "0.1.1"
+source = { git = "https://github.com/RachelHuangZW/SQL-Surgeon.git?subdirectory=backend&tag=v0.1.1#3a01c8c79b185cdbfdc5499e7fbbde669bfedb17" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langchain-google-genai" },
