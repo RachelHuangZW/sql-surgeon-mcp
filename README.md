@@ -101,7 +101,7 @@ Create `.env` in the project root:
 ```
 DATABASE_URL=postgresql://user:password@localhost:5432/dbname
 GOOGLE_API_KEY=your-google-api-key
-# Recommended: a SELECT-only role for SQL that comes from Claude (see Security below)
+# Required for safe use: a SELECT-only role for SQL that comes from Claude (see Security below)
 SURGEON_READONLY_DATABASE_URL=postgresql://sql_surgeon_readonly:password@localhost:5432/dbname
 ```
 
@@ -175,11 +175,11 @@ SQL written by Claude never changes your data. `execute_query`, `explain_query` 
 2. **Queries only.** The statement must start with `SELECT`, `WITH`, `VALUES` or `TABLE`.
 3. **READ ONLY transaction, never committed.** This also blocks data-modifying CTEs and `SELECT ... FOR UPDATE`.
 4. **`statement_timeout` / `lock_timeout`.** Defaults are 5s / 2s. Set `SURGEON_STATEMENT_TIMEOUT_MS` / `SURGEON_LOCK_TIMEOUT_MS` to change them.
-5. **Least-privilege role.** If `SURGEON_READONLY_DATABASE_URL` is set, these queries run as that role instead of `DATABASE_URL`. Create the role with [`scripts/setup_security_role.sql`](https://github.com/RachelHuangZW/SQL-Surgeon/blob/main/scripts/setup_security_role.sql) from SQL-Surgeon.
+5. **Least-privilege role.** When `SURGEON_READONLY_DATABASE_URL` is set, these queries run as that SELECT-only role instead of `DATABASE_URL`. Create the role with [`scripts/setup_security_role.sql`](https://github.com/RachelHuangZW/SQL-Surgeon/blob/main/scripts/setup_security_role.sql) from SQL-Surgeon. When it is not set, they fall back to `DATABASE_URL` and a warning is logged.
 
 Two things still use `DATABASE_URL` directly:
 
 - The sandbox benchmark, because it needs to create a schema. Only allowlisted index DDL runs there, and the transaction is always rolled back.
 - The server's own fixed catalog queries (`list_tables`, `get_table_schema`, `get_slow_queries`).
 
-Setting the read-only role is still recommended. The checks above are the first line of defense; the role is the backstop.
+**Always set `SURGEON_READONLY_DATABASE_URL`.** Checks 1–3 limit what *kind* of statement runs, not which functions it calls. A plain `SELECT` can still call server-side functions such as `pg_read_file()` or `pg_ls_dir()`, in the select list or in the `FROM` clause (`SELECT * FROM pg_read_file('/etc/passwd')`). They read files on the database host whenever the role is a superuser or a member of `pg_read_server_files`. The read-only role is neither, so it is the only layer that blocks them. Without it, Claude's SQL runs as `DATABASE_URL`, which is often the `postgres` superuser.
