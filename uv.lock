@@ -1578,8 +1578,8 @@ wheels = [
 
 [[package]]
 name = "sql-surgeon"
-version = "0.1.1"
-source = { git = "https://github.com/RachelHuangZW/SQL-Surgeon.git?subdirectory=backend&tag=v0.1.1#3a01c8c79b185cdbfdc5499e7fbbde669bfedb17" }
+version = "0.1.2"
+source = { git = "https://github.com/RachelHuangZW/SQL-Surgeon.git?subdirectory=backend&tag=v0.1.2#507eb27f0f3df705ab301d5a9c522f6800d6871e" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langchain-google-genai" },
@@ -1609,7 +1609,7 @@ requires-dist = [
     { name = "mcp", extras = ["cli"], specifier = ">=1.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "sql-surgeon", git = "https://github.com/RachelHuangZW/SQL-Surgeon.git?subdirectory=backend&tag=v0.1.1" },
+    { name = "sql-surgeon", git = "https://github.com/RachelHuangZW/SQL-Surgeon.git?subdirectory=backend&tag=v0.1.2" },
 ]
 
 [package.metadata.requires-dev]

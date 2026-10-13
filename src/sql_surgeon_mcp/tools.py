@@ -3,6 +3,8 @@ import json
 import psycopg2.extras
 
 from sql_surgeon.agent.graph import app as agent_graph
+from sql_surgeon.plan.estimates import format_estimates_for_llm
+from sql_surgeon.plan.table import format_plan_for_llm
 
 from .db import get_connection, get_db_client
 
@@ -95,9 +97,16 @@ def analyze_query(sql: str, ddl: str = "", table_name: str = "") -> str:
     }
 
     final_state = agent_graph.invoke(initial_state)
+    plan_table = final_state.get("plan_table") or []
 
     return json.dumps({
         "issues": final_state.get("issues"),
+        # issue_node_ids[i] = the "#id" nodes in plan that issues[i] is about
+        "issue_node_ids": final_state.get("issue_node_ids"),
+        "execution_time_ms": (final_state.get("explain_output") or [{}])[0].get("Execution Time"),
+        # Text, not the raw dicts: the caller is an LLM. Same "#id" numbering in both.
+        "plan": format_plan_for_llm(plan_table) or None,
+        "estimate_analysis": format_estimates_for_llm(final_state.get("estimate_analysis"), plan_table),
         "advice": final_state.get("advice"),
         "warnings": final_state.get("rewrite_warnings"),
         "index_recommendations": final_state.get("filtered_indexes"),
