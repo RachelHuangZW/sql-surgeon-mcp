@@ -49,7 +49,7 @@ The pipeline is not copied into this repo. It comes from the [SQL-Surgeon](https
 | `list_tables` | `schema` (default `"public"`) | List all tables in a schema |
 | `get_table_schema` | `table_name`, `schema` (default `"public"`) | List columns, types, nullability, defaults, and indexes |
 | `get_slow_queries` | `limit` (default `5`) | Return the slowest queries by mean execution time from `pg_stat_statements` |
-| `analyze_query` | `sql`, `ddl` (optional, auto-fetched if omitted), `table_name` (optional; any value turns on the sandbox benchmark) | Run full SQL-Surgeon optimization pipeline; returns issues, advice, warnings (SQL anti-patterns, tables without a primary key), index recommendations with reasons, optimized SQL, and optional benchmark |
+| `analyze_query` | `sql`, `ddl` (optional, auto-fetched if omitted), `table_name` (optional; any value turns on the sandbox benchmark) | Run full SQL-Surgeon optimization pipeline; returns issues (with the plan nodes each is about), the execution plan with estimated vs actual rows, where row estimates first go wrong, advice, warnings (SQL anti-patterns, tables without a primary key), index recommendations with reasons, optimized SQL, and optional benchmark |
 
 ## SQL-Surgeon Pipeline
 

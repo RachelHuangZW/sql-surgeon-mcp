@@ -37,7 +37,7 @@ def get_table_schema(table_name: str, schema: str = "public") -> str:
 
 @mcp.tool()
 def analyze_query(sql: str, ddl: str = "", table_name: str = "") -> str:
-    """Analyzes a slow SQL query using EXPLAIN ANALYZE against the real database and returns data-driven optimization advice. Always prefer this over reasoning from memory — it runs the actual query plan against live data, not estimates. DDL is optional — the tool automatically fetches the schema for tables referenced in the query if not provided. Use this whenever the user asks about query performance or optimization."""
+    """Analyzes a slow SQL query using EXPLAIN ANALYZE against the real database and returns data-driven optimization advice. Always prefer this over reasoning from memory — it runs the actual query plan against live data, not estimates. DDL is optional — the tool automatically fetches the schema for tables referenced in the query if not provided. Use this whenever the user asks about query performance or optimization. The result includes the execution plan with numbered "#id" nodes (estimated vs actual rows); issue_node_ids and estimate_analysis refer to those ids."""
     return tools.analyze_query(sql, ddl, table_name)
 
 
