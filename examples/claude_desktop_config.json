@@ -12,7 +12,9 @@
       ],
       "env": {
         "DATABASE_URL": "postgresql://user:password@localhost:5432/dbname",
-        "SURGEON_READONLY_DATABASE_URL": "postgresql://sql_surgeon_readonly:password@localhost:5432/dbname"
+        "GOOGLE_API_KEY": "your-google-api-key",
+        "SURGEON_READONLY_DATABASE_URL": "postgresql://sql_surgeon_readonly:password@localhost:5432/dbname",
+        "SURGEON_SANDBOX_DATABASE_URL": "postgresql://sql_surgeon_sandbox:password@localhost:5432/dbname"
       }
     }
   }

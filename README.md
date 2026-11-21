@@ -49,7 +49,7 @@ The pipeline is not copied into this repo. It comes from the [SQL-Surgeon](https
 | `list_tables` | `schema` (default `"public"`) | List all tables in a schema |
 | `get_table_schema` | `table_name`, `schema` (default `"public"`) | List columns, types, nullability, defaults, and indexes |
 | `get_slow_queries` | `limit` (default `5`) | Return the slowest queries by mean execution time from `pg_stat_statements` |
-| `analyze_query` | `sql`, `ddl` (optional, auto-fetched if omitted), `table_name` (optional; any value turns on the sandbox benchmark) | Run full SQL-Surgeon optimization pipeline; returns issues (with the plan nodes each is about), the execution plan with estimated vs actual rows, where row estimates first go wrong, advice, warnings (SQL anti-patterns, tables without a primary key), index recommendations with reasons, optimized SQL, and optional benchmark |
+| `analyze_query` | `sql`, `ddl` (optional, auto-fetched if omitted), `table_name` (optional; any value turns on the sandbox benchmark, which needs `SURGEON_SANDBOX_DATABASE_URL`) | Run full SQL-Surgeon optimization pipeline; returns issues (with the plan nodes each is about), the execution plan with estimated vs actual rows, where row estimates first go wrong, advice, warnings (SQL anti-patterns, tables without a primary key), index recommendations with reasons, optimized SQL, and optional benchmark |
 
 ## SQL-Surgeon Pipeline
 
@@ -61,7 +61,7 @@ The pipeline is not copied into this repo. It comes from the [SQL-Surgeon](https
 4. **identify_issues** — sends the execution plan + DDL to Gemini 2.5 Pro; returns a JSON array of identified bottlenecks (missing indexes, sequential scans, row count misestimation, etc.)
 5. **generate_advice** — generates specific optimization recommendations and a complete optimized SQL script (index DDL + rewritten query)
 6. **review_advice** — a second LLM call acting as a senior DBA reviewer; returns `pass` or `retry` with feedback; a retry goes back to `generate_advice`, up to 2 times
-7. **generate_benchmark_schema** (optional) — copies the query's tables into a temporary schema, applies the suggested DDL (only `CREATE INDEX` / `CREATE EXTENSION` / `ANALYZE` on the copies), and re-runs EXPLAIN to compare plans. Runs in one transaction that is always rolled back
+7. **generate_benchmark_schema** (optional) — copies the query's tables into a temporary schema, applies the suggested DDL (only `CREATE INDEX` / `CREATE EXTENSION` / `ANALYZE` on the copies), and re-runs EXPLAIN to compare plans. Logs in as the low-privilege `sql_surgeon_sandbox` role and runs in one transaction that is always rolled back
 
 ## Project Layout
 
@@ -103,6 +103,8 @@ DATABASE_URL=postgresql://user:password@localhost:5432/dbname
 GOOGLE_API_KEY=your-google-api-key
 # Required for safe use: a SELECT-only role for SQL that comes from Claude (see Security below)
 SURGEON_READONLY_DATABASE_URL=postgresql://sql_surgeon_readonly:password@localhost:5432/dbname
+# Only needed for analyze_query with table_name (the sandbox benchmark); see Security below
+SURGEON_SANDBOX_DATABASE_URL=postgresql://sql_surgeon_sandbox:password@localhost:5432/dbname
 ```
 
 ### Register with Claude Desktop
@@ -177,9 +179,8 @@ SQL written by Claude never changes your data. `execute_query`, `explain_query` 
 4. **`statement_timeout` / `lock_timeout`.** Defaults are 5s / 2s. Set `SURGEON_STATEMENT_TIMEOUT_MS` / `SURGEON_LOCK_TIMEOUT_MS` to change them.
 5. **Least-privilege role.** When `SURGEON_READONLY_DATABASE_URL` is set, these queries run as that SELECT-only role instead of `DATABASE_URL`. Create the role with [`scripts/setup_security_role.sql`](https://github.com/RachelHuangZW/SQL-Surgeon/blob/main/scripts/setup_security_role.sql) from SQL-Surgeon. When it is not set, they fall back to `DATABASE_URL` and a warning is logged.
 
-Two things still use `DATABASE_URL` directly:
+The sandbox benchmark (`analyze_query` with `table_name`) can't be read-only, because it creates a schema and builds indexes. It logs in as its own role instead, set with `SURGEON_SANDBOX_DATABASE_URL`: `sql_surgeon_sandbox` can create the sandbox schema and read `public`, nothing else. Create it with the same script and `-v sb_password=...`. Without the variable the benchmark returns an error rather than falling back to `DATABASE_URL`, and a superuser or privileged login is refused. A separate login is needed because `SET ROLE` from `DATABASE_URL` is no boundary: the query can switch back with `set_config('role', ...)` ([SQL-Surgeon#1](https://github.com/RachelHuangZW/SQL-Surgeon/issues/1)).
 
-- The sandbox benchmark, because it needs to create a schema. Only allowlisted index DDL runs there, and the transaction is always rolled back.
-- The server's own fixed catalog queries (`list_tables`, `get_table_schema`, `get_slow_queries`).
+The server's own fixed catalog queries (`list_tables`, `get_table_schema`, `get_slow_queries`) still use `DATABASE_URL` directly.
 
 **Always set `SURGEON_READONLY_DATABASE_URL`.** Checks 1–3 limit what *kind* of statement runs, not which functions it calls. A plain `SELECT` can still call server-side functions such as `pg_read_file()` or `pg_ls_dir()`, in the select list or in the `FROM` clause (`SELECT * FROM pg_read_file('/etc/passwd')`). They read files on the database host whenever the role is a superuser or a member of `pg_read_server_files`. The read-only role is neither, so it is the only layer that blocks them. Without it, Claude's SQL runs as `DATABASE_URL`, which is often the `postgres` superuser.
